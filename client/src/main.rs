@@ -7,6 +7,7 @@ use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
 use crate::{
     auth::{handle_unlock, login::authenticate, onboard::handle_onboard, session::require_session},
     cli::{Cli, Commands},
+    config::ArcanConfig,
     items::handlers::{handle_item_create, handle_item_delete, handle_item_list, handle_item_view},
     state::ClientState,
     util::generate_password,
@@ -15,6 +16,7 @@ use crate::{
 
 mod auth;
 mod cli;
+mod config;
 mod crypto;
 mod items;
 mod state;
@@ -22,12 +24,18 @@ mod sync;
 mod util;
 mod vault;
 
-const API_BASE: &str = "http://127.0.0.1:3000/api/v1";
+#[cfg(debug_assertions)]
+const APP_NAME: &str = "arcan-dev";
+#[cfg(not(debug_assertions))]
+const APP_NAME: &str = "arcan";
+
+// const API_BASE: &str = "http://127.0.0.1:3000/api/v1";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
     let cli = Cli::parse();
+    let config = ArcanConfig::load()?;
 
     let database_url = get_database_url()?;
     let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
@@ -39,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Commands::Onboard { email } => {
-            handle_onboard(&pool, &email).await?;
+            handle_onboard(&pool, &email, &config.api_url).await?;
         }
         Commands::Unlock => {
             handle_unlock(&pool).await?;
@@ -107,13 +115,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let state = ClientState::get(&pool).await?;
 
             println!("Authenticating with server...");
-            let jwt = authenticate(state.email, &auth_key_bytes).await?;
+            let jwt = authenticate(state.email, &auth_key_bytes, &config.api_url).await?;
 
             println!("Pushing local changes...");
-            sync::push_local_changes(&pool, &http_client, &jwt).await?;
+            sync::push_local_changes(&pool, &http_client, &jwt, &config.api_url).await?;
 
             println!("Pulling remote changes...");
-            sync::pull_remote_changes(&pool, &http_client, &jwt).await?;
+            sync::pull_remote_changes(&pool, &http_client, &jwt, &config.api_url).await?;
 
             // Update the sync timestamp in ClientState
             let now = time::OffsetDateTime::now_utc().unix_timestamp();
@@ -139,7 +147,7 @@ fn get_database_url() -> Result<String, Box<dyn std::error::Error>> {
                 std::process::exit(1);
             } else {
                 // Production default: ~/.local/arcan/arcan.db
-                let Some(project_dirs) = ProjectDirs::from("dev", "lucalewin", "arcan") else {
+                let Some(project_dirs) = ProjectDirs::from("dev", "lucalewin", APP_NAME) else {
                     return Err("Could not determine project directories.".into());
                 };
 

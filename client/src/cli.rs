@@ -1,7 +1,9 @@
 use clap::{Parser, Subcommand};
 
+use crate::APP_NAME;
+
 #[derive(Parser)]
-#[command(name = "arcan")]
+#[command(name = APP_NAME)]
 #[command(about = "Zero-knowledge password manager", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]

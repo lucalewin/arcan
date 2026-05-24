@@ -16,6 +16,7 @@ use crate::auth::{AUTHENTICATION_SUBKEY_INFO, VERIFICATION_SUBKEY_INFO};
 pub async fn handle_onboard(
     pool: &SqlitePool,
     email: &str,
+    api_url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Prompt for the master password on a blocking thread to avoid blocking the runtime.
     let password =
@@ -31,7 +32,7 @@ pub async fn handle_onboard(
     root_key.zeroize();
 
     // Register with remote
-    register(email, auth_subkey.expose_secret(), &root_salt)
+    register(email, auth_subkey.expose_secret(), &root_salt, api_url)
         .await
         .map_err(|e| {
             eprintln!("Registration failed: {}", e);

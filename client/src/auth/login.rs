@@ -7,8 +7,6 @@ use shared::{
     LoginStartResponse,
 };
 
-use crate::API_BASE;
-
 pub fn login_client_start(
     password: &[u8],
 ) -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
@@ -45,6 +43,7 @@ pub async fn authenticate(
     // pool: &SqlitePool,
     email: String,
     auth_key: &[u8],
+    api_url: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     // let state = ClientState::get(pool).await?;
     let client = Client::new();
@@ -54,7 +53,7 @@ pub async fn authenticate(
     let (opaque_client_state, client_start_bytes) = login_client_start(auth_key)?;
 
     let start_res = client
-        .post(format!("{}/auth/login/start", API_BASE))
+        .post(format!("{}/api/v1/auth/login/start", api_url))
         .json(&LoginStartRequest {
             email: email.clone(),
             client_start: BASE64_STANDARD.encode(client_start_bytes),
@@ -70,7 +69,7 @@ pub async fn authenticate(
         login_client_finish(auth_key, &opaque_client_state, &server_start_bytes)?;
 
     let finish_res = client
-        .post(format!("{}/auth/login/finish", API_BASE))
+        .post(format!("{}/api/v1/auth/login/finish", api_url))
         .json(&LoginFinishRequest {
             email: email,
             attempt_id: start_data.attempt_id,

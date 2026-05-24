@@ -8,7 +8,7 @@ use shared::{
     RegistrationStartResponse,
 };
 
-use crate::API_BASE;
+// use crate::API_BASE;
 
 pub fn register_client_start(
     password: &[u8],
@@ -49,13 +49,14 @@ pub async fn register(
     email: &str,
     password: &[u8],
     salt: &SaltString,
+    api_url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
 
     let (state, message) = register_client_start(&password)?;
 
     let response = client
-        .post(format!("{}/auth/register/start", API_BASE))
+        .post(format!("{}/api/v1/auth/register/start", api_url))
         .json(&RegistrationStartRequest {
             email: email.to_string(),
             client_start: BASE64_STANDARD.encode(message),
@@ -73,7 +74,7 @@ pub async fn register(
     let message = register_client_finish(&password, &state, &server_message)?;
 
     let status = client
-        .post(format!("{}/auth/register/finish", API_BASE))
+        .post(format!("{}/api/v1/auth/register/finish", api_url))
         .json(&RegistrationFinishRequest {
             email: email.to_string(),
             salt: salt.to_string(),

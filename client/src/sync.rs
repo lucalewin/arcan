@@ -4,12 +4,11 @@ use shared::{ItemPush, PullRequest, PullResponse, PushRequest, PushResponse, Vau
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::API_BASE;
-
 pub async fn push_local_changes(
     pool: &SqlitePool,
     http: &Client,
     jwt: &str,
+    api_url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // 1. Find unsynced vaults
     let local_vaults = sqlx::query!("SELECT * FROM vaults WHERE is_dirty = 1")
@@ -57,7 +56,7 @@ pub async fn push_local_changes(
         items: push_items,
     };
     let res = http
-        .post(format!("{}/sync/push", API_BASE))
+        .post(format!("{}/api/v1/sync/push", api_url))
         .bearer_auth(jwt)
         .json(&req_payload)
         .send()
@@ -103,6 +102,7 @@ pub async fn pull_remote_changes(
     pool: &SqlitePool,
     http: &Client,
     jwt: &str,
+    api_url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // 1. Calculate local high-water marks for each vault
     // This clever query unions the max revision of the vault row and its item rows
@@ -128,7 +128,7 @@ pub async fn pull_remote_changes(
 
     // 2. Request updates from server
     let res = http
-        .post(format!("{}/sync/pull", API_BASE))
+        .post(format!("{}/api/v1/sync/pull", api_url))
         .bearer_auth(jwt)
         .json(&PullRequest { vault_revisions })
         .send()
