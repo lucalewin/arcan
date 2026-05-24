@@ -1,6 +1,4 @@
 use clap::{Parser, Subcommand};
-use rpassword::prompt_password;
-use std::env;
 
 #[derive(Parser)]
 #[command(name = "arcan")]

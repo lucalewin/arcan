@@ -1,5 +1,6 @@
 use sqlx::SqlitePool;
 
+#[allow(unused)]
 pub struct ClientState {
     pub email: String,
     pub local_verifier: Vec<u8>,
@@ -29,7 +30,7 @@ impl ClientState {
         sqlx::query!(
             r#"
             INSERT INTO client_state (id, email, local_verifier, master_salt, last_sync_at)
-            VALUES (1, $1, $2, $3, $4)
+            VALUES (1, ?1, ?2, ?3, ?4)
             ON CONFLICT(id) DO UPDATE SET
                 email = excluded.email,
                 local_verifier = excluded.local_verifier,
@@ -50,7 +51,7 @@ impl ClientState {
     /// Quickly update just the sync timestamp
     pub async fn update_sync_time(pool: &SqlitePool, timestamp: i64) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "UPDATE client_state SET last_sync_at = $1 WHERE id = 1",
+            "UPDATE client_state SET last_sync_at = ?1 WHERE id = 1",
             timestamp
         )
         .execute(pool)

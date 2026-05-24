@@ -1,91 +1,10 @@
-use crate::state::ClientState;
 use base64::prelude::*;
-use chacha20poly1305::aead::OsRng;
-use opaque_ke::{ClientLogin, ClientLoginFinishParameters, CredentialResponse};
 use reqwest::Client;
-use shared::{
-    DefaultCipherSuite, ItemPush, LoginFinishRequest, LoginFinishResponse, LoginStartRequest,
-    LoginStartResponse, PullRequest, PullResponse, PushRequest, PushResponse, VaultPush,
-};
+use shared::{ItemPush, PullRequest, PullResponse, PushRequest, PushResponse, VaultPush};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-const API_BASE: &str = "http://127.0.0.1:3000/api/v1";
-
-pub fn login_client_start(
-    password: &[u8],
-) -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
-    let mut rng = OsRng;
-
-    match ClientLogin::<DefaultCipherSuite>::start(&mut rng, password) {
-        Ok(login) => Ok((
-            login.state.serialize().to_vec(),
-            login.message.serialize().to_vec(),
-        )),
-        Err(err) => return Err(err.to_string().into()),
-    }
-}
-
-pub fn login_client_finish(
-    password: &[u8],
-    client_start: &[u8],
-    server_start: &[u8],
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let client_state = ClientLogin::<DefaultCipherSuite>::deserialize(client_start)?;
-    let credential_response = CredentialResponse::deserialize(server_start)?;
-
-    let result = client_state.finish(
-        &mut OsRng,
-        password,
-        credential_response,
-        ClientLoginFinishParameters::default(),
-    )?;
-
-    Ok(result.message.serialize().to_vec())
-}
-
-pub async fn authenticate(
-    pool: &SqlitePool,
-    auth_key: &[u8],
-) -> Result<String, Box<dyn std::error::Error>> {
-    let state = ClientState::get(pool).await?;
-    let client = Client::new();
-
-    // 1. OPAQUE Client Start
-    // You will need to wrap the opaque_ke client logic in your shared crate
-    let (opaque_client_state, client_start_bytes) = login_client_start(auth_key)?;
-
-    let start_res = client
-        .post(format!("{}/auth/login/start", API_BASE))
-        .json(&LoginStartRequest {
-            email: state.email.clone(),
-            client_start: BASE64_STANDARD.encode(client_start_bytes),
-        })
-        .send()
-        .await?;
-
-    let start_data: LoginStartResponse = start_res.json().await?;
-    let server_start_bytes = BASE64_STANDARD.decode(&start_data.message)?;
-
-    // 2. OPAQUE Client Finish
-    let client_finish_bytes =
-        login_client_finish(auth_key, &opaque_client_state, &server_start_bytes)?;
-
-    let finish_res = client
-        .post(format!("{}/auth/login/finish", API_BASE))
-        .json(&LoginFinishRequest {
-            email: state.email,
-            attempt_id: start_data.attempt_id,
-            client_finish: BASE64_STANDARD.encode(client_finish_bytes),
-        })
-        .send()
-        .await?;
-
-    let finish_data: LoginFinishResponse = finish_res.json().await?;
-
-    // Return the JWT
-    Ok(finish_data.access_token)
-}
+use crate::API_BASE;
 
 pub async fn push_local_changes(
     pool: &SqlitePool,
@@ -93,7 +12,7 @@ pub async fn push_local_changes(
     jwt: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // 1. Find unsynced vaults
-    let local_vaults = sqlx::query!("SELECT * FROM vaults WHERE server_revision = 0")
+    let local_vaults = sqlx::query!("SELECT * FROM vaults WHERE is_dirty = 1")
         .fetch_all(pool)
         .await?;
 
@@ -101,7 +20,7 @@ pub async fn push_local_changes(
     for v in local_vaults {
         push_vaults.push(VaultPush {
             id: Uuid::parse_str(&v.id)?,
-            base_revision: 0, // Using 0 for new creations
+            base_revision: v.server_revision,
             is_deleted: v.is_deleted != 0,
             encrypted_name: BASE64_STANDARD.encode(&v.encrypted_name),
             encrypted_vsk: BASE64_STANDARD.encode(&v.encrypted_vsk),
@@ -111,7 +30,7 @@ pub async fn push_local_changes(
     }
 
     // 2. Find unsynced items
-    let local_items = sqlx::query!("SELECT * FROM items WHERE server_revision = 0")
+    let local_items = sqlx::query!("SELECT * FROM items WHERE is_dirty = 1")
         .fetch_all(pool)
         .await?;
 
@@ -120,7 +39,7 @@ pub async fn push_local_changes(
         push_items.push(ItemPush {
             id: Uuid::parse_str(&i.id)?,
             vault_id: Uuid::parse_str(&i.vault_id)?,
-            base_revision: 0,
+            base_revision: i.server_revision,
             is_deleted: i.is_deleted != 0,
             encrypted_payload: Some(BASE64_STANDARD.encode(&i.encrypted_payload)),
             created_at: i.created_at,
@@ -159,7 +78,7 @@ pub async fn push_local_changes(
         let id_str = id.to_string();
         // Try updating vault first, if rows affected == 0, try item
         let v_res = sqlx::query!(
-            "UPDATE vaults SET server_revision = $1 WHERE id = $2",
+            "UPDATE vaults SET server_revision = ?1, is_dirty = 0 WHERE id = ?2",
             new_rev,
             id_str
         )
@@ -168,7 +87,7 @@ pub async fn push_local_changes(
 
         if v_res.rows_affected() == 0 {
             sqlx::query!(
-                "UPDATE items SET server_revision = $1 WHERE id = $2",
+                "UPDATE items SET server_revision = ?1, is_dirty = 0 WHERE id = ?2",
                 new_rev,
                 id_str
             )
@@ -226,8 +145,8 @@ pub async fn pull_remote_changes(
 
         sqlx::query!(
             r#"
-            INSERT INTO vaults (id, encrypted_name, encrypted_vsk, server_revision, is_deleted, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO vaults (id, encrypted_name, encrypted_vsk, server_revision, is_deleted, is_dirty, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)
             ON CONFLICT(id) DO UPDATE SET
                 encrypted_name = excluded.encrypted_name,
                 encrypted_vsk = excluded.encrypted_vsk,
@@ -256,8 +175,8 @@ pub async fn pull_remote_changes(
 
         sqlx::query!(
             r#"
-            INSERT INTO items (id, vault_id, encrypted_payload, server_revision, is_deleted, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO items (id, vault_id, encrypted_payload, server_revision, is_deleted, is_dirty, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)
             ON CONFLICT(id) DO UPDATE SET
                 encrypted_payload = excluded.encrypted_payload,
                 server_revision = excluded.server_revision,

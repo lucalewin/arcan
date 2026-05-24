@@ -58,25 +58,3 @@ pub fn generate_password(options: &PasswordOptions) -> String {
 
     String::from_utf8(password).expect("Generated password contains invalid UTF-8")
 }
-
-pub fn score_password(password: &str) -> u8 {
-    let length_score = match password.len() {
-        0..=7 => 0,
-        8..=11 => 1,
-        12..=15 => 2,
-        16..=19 => 3,
-        _ => 4,
-    };
-
-    let has_uppercase = password.chars().any(|c| c.is_uppercase());
-    let has_lowercase = password.chars().any(|c| c.is_lowercase());
-    let has_numbers = password.chars().any(|c| c.is_numeric());
-    let has_symbols = password.chars().any(|c| !c.is_alphanumeric());
-
-    let variety_score = [has_uppercase, has_lowercase, has_numbers, has_symbols]
-        .iter()
-        .filter(|&&x| x)
-        .count() as u8;
-
-    length_score + variety_score
-}

@@ -2,7 +2,7 @@ use sqlx::SqlitePool;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::crypto::{decrypt_payload, encrypt_payload, pack_payload, unpack_payload};
+use crate::crypto::{EncryptedPayload, decrypt_payload, encrypt_payload};
 
 async fn get_decrypted_vsk(
     pool: &SqlitePool,
@@ -11,7 +11,7 @@ async fn get_decrypted_vsk(
 ) -> Result<[u8; 32], Box<dyn std::error::Error>> {
     // 1. Fetch the encrypted VSK from the database
     let vault = sqlx::query!(
-        "SELECT encrypted_vsk FROM vaults WHERE id = $1 AND is_deleted = 0",
+        "SELECT encrypted_vsk FROM vaults WHERE id = ?1 AND is_deleted = 0",
         vault_id
     )
     .fetch_optional(pool)
@@ -19,11 +19,15 @@ async fn get_decrypted_vsk(
     .ok_or("Vault not found or deleted")?;
 
     // 2. Unpack and decrypt using the KEK
-    let (nonce, ciphertext) = unpack_payload(&vault.encrypted_vsk)?;
+    let encrypted_payload = EncryptedPayload::unpack(&vault.encrypted_vsk)?;
 
     // Note: In vault creation, we used vault_id as the AAD for the VSK
     let vsk_bytes =
-        decrypt_payload(kek, ciphertext, &nonce, vault_id).map_err(|_| "Failed to decrypt VSK.")?;
+        decrypt_payload(kek, &encrypted_payload, vault_id).map_err(|_| "Failed to decrypt VSK.")?;
+
+    if vsk_bytes.len() != 32 {
+        return Err("Invalid VSK length after decryption".into());
+    }
 
     let mut vsk = [0u8; 32];
     vsk.copy_from_slice(&vsk_bytes);
@@ -58,13 +62,13 @@ pub async fn handle_item_create(
     let payload_json = serde_json::Value::Object(payload_map).to_string();
 
     // 3. Encrypt the payload with the VSK (AAD = item_id)
-    let (ciphertext, nonce) = encrypt_payload(&vsk, payload_json.as_bytes(), &item_id);
-    let packed_payload = pack_payload(nonce, ciphertext);
+    let encrypted_payload = encrypt_payload(&vsk, payload_json.as_bytes(), &item_id)?;
+    let packed_payload = encrypted_payload.pack();
 
     // 4. Save to DB
     sqlx::query!(
-        "INSERT INTO items (id, vault_id, encrypted_payload, server_revision, is_deleted, created_at, updated_at)
-         VALUES ($1, $2, $3, 0, 0, $4, $5)",
+        "INSERT INTO items (id, vault_id, encrypted_payload, server_revision, is_deleted, is_dirty, created_at, updated_at)
+         VALUES (?1, ?2, ?3, 0, 0, 1, ?4, ?5)",
         item_id,
         vault_id,
         packed_payload,
@@ -88,7 +92,7 @@ pub async fn handle_item_list(
 
     // 2. Fetch all active items in the vault
     let items = sqlx::query!(
-        "SELECT id, encrypted_payload FROM items WHERE vault_id = $1 AND is_deleted = 0",
+        "SELECT id, encrypted_payload FROM items WHERE vault_id = ?1 AND is_deleted = 0",
         vault_id
     )
     .fetch_all(pool)
@@ -104,8 +108,8 @@ pub async fn handle_item_list(
 
     for item in items {
         // 3. Decrypt the payload
-        let (nonce, ciphertext) = unpack_payload(&item.encrypted_payload)?;
-        let payload_bytes = decrypt_payload(&vsk, ciphertext, &nonce, &item.id)
+        let encrypted_payload = EncryptedPayload::unpack(&item.encrypted_payload)?;
+        let payload_bytes = decrypt_payload(&vsk, &encrypted_payload, &item.id)
             .map_err(|_| "Failed to decrypt item payload. Possible corrupted data.")?;
 
         let payload_json: serde_json::Value = serde_json::from_slice(&payload_bytes)?;
@@ -131,7 +135,7 @@ pub async fn handle_item_view(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // 1. Get the item and its vault_id
     let item = sqlx::query!(
-        "SELECT vault_id, encrypted_payload FROM items WHERE id = $1 AND is_deleted = 0",
+        "SELECT vault_id, encrypted_payload FROM items WHERE id = ?1 AND is_deleted = 0",
         item_id
     )
     .fetch_optional(pool)
@@ -142,8 +146,8 @@ pub async fn handle_item_view(
     let vsk = get_decrypted_vsk(pool, kek, &item.vault_id).await?;
 
     // 3. Decrypt the payload
-    let (nonce, ciphertext) = unpack_payload(&item.encrypted_payload)?;
-    let payload_bytes = decrypt_payload(&vsk, ciphertext, &nonce, &item_id)
+    let encrypted_payload = EncryptedPayload::unpack(&item.encrypted_payload)?;
+    let payload_bytes = decrypt_payload(&vsk, &encrypted_payload, &item_id)
         .map_err(|_| "Failed to decrypt item payload. Possible corrupted data.")?;
 
     let payload_json: serde_json::Value = serde_json::from_slice(&payload_bytes)?;
@@ -164,7 +168,7 @@ pub async fn handle_item_delete(
     let now = OffsetDateTime::now_utc().unix_timestamp();
 
     let result = sqlx::query!(
-        "UPDATE items SET is_deleted = 1, updated_at = $1 WHERE id = $2",
+        "UPDATE items SET is_deleted = 1, is_dirty = 1, updated_at = ?1 WHERE id = ?2",
         now,
         item_id
     )
