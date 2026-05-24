@@ -12,7 +12,8 @@ use crate::{
 };
 
 pub mod login;
-pub mod register;
+pub mod onboard;
+mod register;
 pub mod session;
 
 pub(crate) const ENCRYPTION_SUBKEY_INFO: &str = "arcan-encryption";

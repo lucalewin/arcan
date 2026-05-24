@@ -65,3 +65,28 @@ pub fn require_session() -> Result<ArcanSession, String> {
 
     ArcanSession::from_env(&session_str)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_roundtrip_and_key_decoding() {
+        let kek = base64::engine::general_purpose::STANDARD.encode([0u8; 32]);
+        let auth = base64::engine::general_purpose::STANDARD.encode([1u8; 32]);
+        let s = ArcanSession {
+            kek: kek.clone(),
+            auth: auth.clone(),
+        };
+
+        let env = s.to_env();
+        let parsed = ArcanSession::from_env(&env).unwrap();
+        assert_eq!(parsed.kek, kek);
+        assert_eq!(parsed.auth, auth);
+
+        let kek_bytes = parsed.encryption_key().unwrap();
+        assert_eq!(kek_bytes, [0u8; 32]);
+        let auth_bytes = parsed.authentication_key().unwrap();
+        assert_eq!(auth_bytes, [1u8; 32]);
+    }
+}

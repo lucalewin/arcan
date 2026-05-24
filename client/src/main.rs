@@ -1,18 +1,12 @@
-use argon2::password_hash::SaltString;
-use chacha20poly1305::aead::OsRng;
+use std::str::FromStr;
+
 use clap::Parser;
-use rpassword::prompt_password;
-use secrecy::ExposeSecret;
-use sqlx::SqlitePool;
-use zeroize::Zeroize;
+use directories::ProjectDirs;
+use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
 
 use crate::{
-    auth::{
-        AUTHENTICATION_SUBKEY_INFO, VERIFICATION_SUBKEY_INFO, handle_unlock, login::authenticate,
-        register::register, session::require_session,
-    },
+    auth::{handle_unlock, login::authenticate, onboard::handle_onboard, session::require_session},
     cli::{Cli, Commands},
-    crypto::{derive_master_key, derive_subkey},
     item::{handle_item_create, handle_item_delete, handle_item_list, handle_item_view},
     state::ClientState,
     util::generate_password,
@@ -30,46 +24,17 @@ mod vault;
 
 const API_BASE: &str = "http://127.0.0.1:3000/api/v1";
 
-async fn handle_onboard(pool: &SqlitePool, email: &str) -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Prompt for Master Password securely
-    let password = prompt_password("Master Password: ")?;
-
-    // 2. Generate a random salt and derive the root key
-    let root_salt = SaltString::generate(&mut OsRng);
-    let mut root_key = derive_master_key(&password, &root_salt)?;
-    let auth_subkey = derive_subkey(&root_key, AUTHENTICATION_SUBKEY_INFO);
-    let verification_subkey = derive_subkey(&root_key, VERIFICATION_SUBKEY_INFO);
-
-    root_key.zeroize();
-
-    register(email, auth_subkey.expose_secret(), &root_salt)
-        .await
-        .map_err(|e| {
-            eprintln!("Registration failed: {}", e);
-            "Registration process failed.".to_string()
-        })?;
-
-    // 3. Store the email, salt, and password hash in the local DB for future logins
-    ClientState::upsert(
-        pool,
-        email,
-        verification_subkey.expose_secret(),
-        root_salt.as_str(),
-        0,
-    )
-    .await?;
-
-    println!("Onboarding successful for {}!", email);
-    Ok(())
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
     let cli = Cli::parse();
 
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = SqlitePool::connect(&database_url).await?;
+    let database_url = get_database_url()?;
+    let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
+    let pool = SqlitePool::connect_with(options).await.expect(&format!(
+        "Failed to connect to database at {}",
+        database_url
+    ));
     init_db(&pool).await?;
 
     match cli.command {
@@ -155,6 +120,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn get_database_url() -> Result<String, Box<dyn std::error::Error>> {
+    match std::env::var("DATABASE_URL") {
+        Ok(url) => Ok(url),
+        Err(_) => {
+            if cfg!(debug_assertions) {
+                // In debug builds, require explicit DATABASE_URL to avoid accidental use of production DB.
+                eprintln!(
+                    "DATABASE_URL not set. In debug mode please set DATABASE_URL to avoid interfering with production data."
+                );
+                eprintln!("Example: export DATABASE_URL=\"sqlite://./dev-arcan.db\"");
+                std::process::exit(1);
+            } else {
+                // Production default: ~/.local/arcan/arcan.db
+                let Some(project_dirs) = ProjectDirs::from("dev", "lucalewin", "arcan") else {
+                    return Err("Could not determine project directories.".into());
+                };
+
+                let data_dir = project_dirs.data_dir();
+                std::fs::create_dir_all(&data_dir).expect("Failed to create data directory");
+                let db = data_dir.join("arcan.db");
+
+                Ok(format!("sqlite://{}", db.display()))
+            }
+        }
+    }
 }
 
 async fn init_db(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
