@@ -7,7 +7,7 @@ use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
 use crate::{
     auth::{handle_unlock, login::authenticate, onboard::handle_onboard, session::require_session},
     cli::{Cli, Commands},
-    item::{handle_item_create, handle_item_delete, handle_item_list, handle_item_view},
+    items::handlers::{handle_item_create, handle_item_delete, handle_item_list, handle_item_view},
     state::ClientState,
     util::generate_password,
     vault::{handle_vault_create, handle_vault_delete, handle_vault_list},
@@ -16,7 +16,7 @@ use crate::{
 mod auth;
 mod cli;
 mod crypto;
-mod item;
+mod items;
 mod state;
 mod sync;
 mod util;
@@ -77,22 +77,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let enc_key = session.encryption_key()?;
 
             match action {
-                cli::ItemCommands::Create { vault_id, .. } => {
+                cli::ItemCommands::Create {
+                    vault_id,
+                    title,
+                    tags,
+                    payload,
+                } => {
                     println!("Creating item '{}' in vault {}", "name", vault_id);
-                    handle_item_create(&pool, &enc_key, vault_id, "name".to_string(), vec![])
-                        .await?;
+                    handle_item_create(&pool, &enc_key, vault_id, title, tags, payload).await?;
                 }
                 cli::ItemCommands::List { vault_id } => {
                     println!("Listing items in vault {}", vault_id);
                     handle_item_list(&pool, &enc_key, vault_id).await?;
                 }
-                cli::ItemCommands::View { item_id } => {
-                    println!("Reading item with ID: {}", item_id);
-                    handle_item_view(&pool, &enc_key, item_id).await?;
+                cli::ItemCommands::View { id } => {
+                    println!("Reading item with ID: {}", id);
+                    handle_item_view(&pool, &enc_key, id).await?;
                 }
-                cli::ItemCommands::Delete { item_id } => {
-                    println!("Deleting item with ID: {}", item_id);
-                    handle_item_delete(&pool, item_id).await?;
+                cli::ItemCommands::Delete { id } => {
+                    println!("Deleting item with ID: {}", id);
+                    handle_item_delete(&pool, id).await?;
                 }
             }
         }

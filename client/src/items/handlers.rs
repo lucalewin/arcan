@@ -2,7 +2,11 @@ use sqlx::SqlitePool;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::crypto::{EncryptedPayload, decrypt_payload, encrypt_payload};
+use crate::{
+    cli,
+    crypto::{EncryptedPayload, decrypt_payload, encrypt_payload},
+    items::envelop::{CardItem, ItemEnvelope, ItemPayload, LoginItem, NoteItem, TotpItem},
+};
 
 async fn get_decrypted_vsk(
     pool: &SqlitePool,
@@ -38,8 +42,9 @@ pub async fn handle_item_create(
     pool: &SqlitePool,
     kek: &[u8; 32],
     vault_id: String,
-    item_type: String,
-    fields: Vec<String>,
+    title: String,
+    tags: Vec<String>,
+    payload: crate::cli::CreateItemPayload,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let item_id = Uuid::new_v4().to_string();
     let now = OffsetDateTime::now_utc().unix_timestamp();
@@ -48,22 +53,50 @@ pub async fn handle_item_create(
     let vsk = get_decrypted_vsk(pool, kek, &vault_id).await?;
 
     // 2. Build the JSON payload
-    let mut payload_map = serde_json::Map::new();
-    payload_map.insert("type".to_string(), serde_json::Value::String(item_type));
+    let payload = match payload {
+        cli::CreateItemPayload::Login {
+            username,
+            password,
+            url,
+        } => ItemPayload::Login(LoginItem {
+            username,
+            password,
+            url,
+        }),
+        cli::CreateItemPayload::Note { content } => ItemPayload::Note(NoteItem { content }),
+        cli::CreateItemPayload::Totp {
+            secret,
+            account_name,
+        } => ItemPayload::Totp(TotpItem {
+            secret,
+            account_name,
+            issuer: None,
+        }),
+        cli::CreateItemPayload::Card {
+            cardholder,
+            number,
+            exp_month,
+            exp_year,
+            cvv,
+        } => ItemPayload::Card(CardItem {
+            cardholder_name: cardholder,
+            number,
+            exp_month,
+            exp_year,
+            cvv,
+        }),
+    };
 
-    for field in fields {
-        if let Some((key, value)) = field.split_once('=') {
-            payload_map.insert(
-                key.to_string(),
-                serde_json::Value::String(value.to_string()),
-            );
-        }
-    }
-    let payload_json = serde_json::Value::Object(payload_map).to_string();
+    // 3. Wrap it in the Envelope
+    let envelope = ItemEnvelope {
+        title,
+        tags: tags.into_iter().filter(|t| !t.is_empty()).collect(),
+        payload,
+    };
 
-    // 3. Encrypt the payload with the VSK (AAD = item_id)
-    let encrypted_payload = encrypt_payload(&vsk, payload_json.as_bytes(), &item_id)?;
-    let packed_payload = encrypted_payload.pack();
+    // 4. Serialize and Encrypt
+    let payload_json = serde_json::to_string(&envelope)?;
+    let packed_payload = encrypt_payload(&vsk, payload_json.as_bytes(), &item_id)?.pack();
 
     // 4. Save to DB
     sqlx::query!(
@@ -103,8 +136,8 @@ pub async fn handle_item_list(
         return Ok(());
     }
 
-    println!("{:<38} | {}", "ITEM ID", "IDENTIFIER");
-    println!("{:-<38}-|-{:-<30}", "", "");
+    println!("{:<38} | {:<15} | {}", "ITEM ID", "TYPE", "IDENTIFIER");
+    println!("{:-<38}-|-{:-<15}-|-{:-<30}", "", "", "");
 
     for item in items {
         // 3. Decrypt the payload
@@ -112,17 +145,20 @@ pub async fn handle_item_list(
         let payload_bytes = decrypt_payload(&vsk, &encrypted_payload, &item.id)
             .map_err(|_| "Failed to decrypt item payload. Possible corrupted data.")?;
 
-        let payload_json: serde_json::Value = serde_json::from_slice(&payload_bytes)?;
+        let envelope: ItemEnvelope = serde_json::from_slice(&payload_bytes)?;
 
-        // Attempt to find a sensible name to display (like a title or username)
-        let identifier = payload_json
-            .get("title")
-            .or_else(|| payload_json.get("username"))
-            .or_else(|| payload_json.get("type"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown Item");
+        let item_type_str = match envelope.payload {
+            ItemPayload::Login(_) => "Login",
+            ItemPayload::SshKey(_) => "SSH Key",
+            ItemPayload::Totp(_) => "TOTP",
+            ItemPayload::Note(_) => "Note",
+            ItemPayload::Card(_) => "Card",
+        };
 
-        println!("{:<38} | {}", item.id, identifier);
+        println!(
+            "{:<38} | {:<15} | {}",
+            item.id, item_type_str, envelope.title
+        );
     }
 
     Ok(())

@@ -52,18 +52,60 @@ pub enum VaultCommands {
 #[derive(Subcommand)]
 pub enum ItemCommands {
     Create {
+        #[arg(long)]
         vault_id: String,
-        item_type: String,
-        #[arg(short, long, num_args = 1..)]
-        fields: Vec<String>,
+
+        #[arg(long)]
+        title: String,
+
+        #[arg(long, value_delimiter = ',', default_value = "")]
+        tags: Vec<String>,
+
+        #[command(subcommand)]
+        payload: CreateItemPayload,
     },
     List {
         vault_id: String,
     },
     View {
-        item_id: String,
+        id: String,
     },
     Delete {
-        item_id: String,
+        id: String,
+    },
+}
+
+// This maps 1:1 with your ItemPayload enum
+#[derive(Subcommand)]
+pub enum CreateItemPayload {
+    Login {
+        #[arg(long)]
+        username: String,
+        #[arg(long)]
+        password: String,
+        #[arg(long)]
+        url: Option<String>,
+    },
+    Note {
+        #[arg(long)]
+        content: String,
+    },
+    Totp {
+        #[arg(long)]
+        secret: String,
+        #[arg(long)]
+        account_name: Option<String>,
+    },
+    Card {
+        #[arg(long)]
+        cardholder: String,
+        #[arg(long)]
+        number: String,
+        #[arg(long)]
+        exp_month: u8,
+        #[arg(long)]
+        exp_year: u16,
+        #[arg(long)]
+        cvv: String,
     },
 }
