@@ -1,14 +1,12 @@
 use sqlx::SqlitePool;
-use time::OffsetDateTime;
-use uuid::Uuid;
+// use time::OffsetDateTime;
 
 use crate::{
-    cli,
-    crypto::{EncryptedPayload, decrypt_payload, encrypt_payload},
-    items::envelop::{CardItem, ItemEnvelope, ItemPayload, LoginItem, NoteItem, TotpItem},
+    crypto::{EncryptedPayload, decrypt_payload},
+    items::envelop::{ItemEnvelope, ItemPayload},
 };
 
-async fn get_decrypted_vsk(
+pub async fn get_decrypted_vsk(
     pool: &SqlitePool,
     kek: &[u8; 32],
     vault_id: &str,
@@ -38,82 +36,82 @@ async fn get_decrypted_vsk(
     Ok(vsk)
 }
 
-pub async fn handle_item_create(
-    pool: &SqlitePool,
-    kek: &[u8; 32],
-    vault_id: String,
-    title: String,
-    tags: Vec<String>,
-    payload: crate::cli::CreateItemPayload,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let item_id = Uuid::new_v4().to_string();
-    let now = OffsetDateTime::now_utc().unix_timestamp();
+// pub async fn handle_item_create(
+//     pool: &SqlitePool,
+//     kek: &[u8; 32],
+//     vault_id: String,
+//     title: String,
+//     tags: Vec<String>,
+//     payload: crate::cli::CreateItemPayload,
+// ) -> Result<(), Box<dyn std::error::Error>> {
+//     let item_id = Uuid::new_v4().to_string();
+//     let now = OffsetDateTime::now_utc().unix_timestamp();
 
-    // 1. Fetch and decrypt the VSK for this vault
-    let vsk = get_decrypted_vsk(pool, kek, &vault_id).await?;
+//     // 1. Fetch and decrypt the VSK for this vault
+//     let vsk = get_decrypted_vsk(pool, kek, &vault_id).await?;
 
-    // 2. Build the JSON payload
-    let payload = match payload {
-        cli::CreateItemPayload::Login {
-            username,
-            password,
-            url,
-        } => ItemPayload::Login(LoginItem {
-            username,
-            password,
-            url,
-        }),
-        cli::CreateItemPayload::Note { content } => ItemPayload::Note(NoteItem { content }),
-        cli::CreateItemPayload::Totp {
-            secret,
-            account_name,
-        } => ItemPayload::Totp(TotpItem {
-            secret,
-            account_name,
-            issuer: None,
-        }),
-        cli::CreateItemPayload::Card {
-            cardholder,
-            number,
-            exp_month,
-            exp_year,
-            cvv,
-        } => ItemPayload::Card(CardItem {
-            cardholder_name: cardholder,
-            number,
-            exp_month,
-            exp_year,
-            cvv,
-        }),
-    };
+//     // 2. Build the JSON payload
+//     let payload = match payload {
+//         cli::CreateItemPayload::Login {
+//             username,
+//             password,
+//             url,
+//         } => ItemPayload::Login(LoginItem {
+//             username,
+//             password,
+//             url,
+//         }),
+//         cli::CreateItemPayload::Note { content } => ItemPayload::Note(NoteItem { content }),
+//         cli::CreateItemPayload::Totp {
+//             secret,
+//             account_name,
+//         } => ItemPayload::Totp(TotpItem {
+//             secret,
+//             account_name,
+//             issuer: None,
+//         }),
+//         cli::CreateItemPayload::Card {
+//             cardholder,
+//             number,
+//             exp_month,
+//             exp_year,
+//             cvv,
+//         } => ItemPayload::Card(CardItem {
+//             cardholder_name: cardholder,
+//             number,
+//             exp_month,
+//             exp_year,
+//             cvv,
+//         }),
+//     };
 
-    // 3. Wrap it in the Envelope
-    let envelope = ItemEnvelope {
-        title,
-        tags: tags.into_iter().filter(|t| !t.is_empty()).collect(),
-        payload,
-    };
+//     // 3. Wrap it in the Envelope
+//     let envelope = ItemEnvelope {
+//         title,
+//         tags: tags.into_iter().filter(|t| !t.is_empty()).collect(),
+//         payload,
+//     };
 
-    // 4. Serialize and Encrypt
-    let payload_json = serde_json::to_string(&envelope)?;
-    let packed_payload = encrypt_payload(&vsk, payload_json.as_bytes(), &item_id)?.pack();
+//     // 4. Serialize and Encrypt
+//     let payload_json = serde_json::to_string(&envelope)?;
+//     let packed_payload = encrypt_payload(&vsk, payload_json.as_bytes(), &item_id)?.pack();
 
-    // 4. Save to DB
-    sqlx::query!(
-        "INSERT INTO items (id, vault_id, encrypted_payload, server_revision, is_deleted, is_dirty, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 0, 0, 1, ?4, ?5)",
-        item_id,
-        vault_id,
-        packed_payload,
-        now,
-        now
-    )
-    .execute(pool)
-    .await?;
+//     // 4. Save to DB
+//     sqlx::query!(
+//         "INSERT INTO items (id, vault_id, encrypted_payload, server_revision, is_deleted, is_dirty, created_at, updated_at)
+//          VALUES (?1, ?2, ?3, 0, 0, 1, ?4, ?5)",
+//         item_id,
+//         vault_id,
+//         packed_payload,
+//         now,
+//         now
+//     )
+//     .execute(pool)
+//     .await?;
 
-    println!("Item created successfully. ID: {}", item_id);
-    Ok(())
-}
+//     println!("Item created successfully. ID: {}", item_id);
+//     Ok(())
+// }
 
 pub async fn handle_item_list(
     pool: &SqlitePool,
@@ -197,28 +195,28 @@ pub async fn handle_item_view(
     Ok(())
 }
 
-pub async fn handle_item_delete(
-    pool: &SqlitePool,
-    item_id: String,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let now = OffsetDateTime::now_utc().unix_timestamp();
+// pub async fn handle_item_delete(
+//     pool: &SqlitePool,
+//     item_id: String,
+// ) -> Result<(), Box<dyn std::error::Error>> {
+//     let now = OffsetDateTime::now_utc().unix_timestamp();
 
-    let result = sqlx::query!(
-        "UPDATE items SET is_deleted = 1, is_dirty = 1, updated_at = ?1 WHERE id = ?2",
-        now,
-        item_id
-    )
-    .execute(pool)
-    .await?;
+//     let result = sqlx::query!(
+//         "UPDATE items SET is_deleted = 1, is_dirty = 1, updated_at = ?1 WHERE id = ?2",
+//         now,
+//         item_id
+//     )
+//     .execute(pool)
+//     .await?;
 
-    if result.rows_affected() > 0 {
-        println!(
-            "Item {} queued for deletion. Run `arcan sync` to push.",
-            item_id
-        );
-    } else {
-        println!("Item {} not found.", item_id);
-    }
+//     if result.rows_affected() > 0 {
+//         println!(
+//             "Item {} queued for deletion. Run `arcan sync` to push.",
+//             item_id
+//         );
+//     } else {
+//         println!("Item {} not found.", item_id);
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }

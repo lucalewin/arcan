@@ -7,7 +7,11 @@ edition = "2024"
 base64 = "0.22.1"
 chrono = "0.4.44"
 shared = { version = "0.1.0", path = "../shared" }
-reqwest = { version = "0.13.3", features = ["json"] }
+# reqwest = { version = "0.13.3", features = ["json"] }
+reqwest = { version = "0.13.3", default-features = false, features = [
+    "json",
+    "rustls",
+] }
 serde = { version = "1.0.228", features = ["derive"] }
 tokio = { version = "1.52.3", features = ["full"] }
 uuid = { version = "1.23.1", features = ["serde", "v4"] }
@@ -29,3 +33,11 @@ opaque-ke = "4.0.1"
 bytes = "1.11.1"
 directories = "6.0.0"
 toml = "1.1.2"
+inquire = "0.9.4"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

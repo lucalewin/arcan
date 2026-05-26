@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use uuid::Uuid;
 
 use crate::APP_NAME;
 
@@ -16,6 +17,9 @@ pub enum Commands {
     Onboard {
         #[arg(short, long)]
         email: String,
+
+        #[arg(long)]
+        login: bool,
     },
 
     /// Unlock the vault and generate the session environment variable
@@ -41,39 +45,57 @@ pub enum Commands {
 
     /// Manually sync local changes with the remote server
     Sync,
+
+    Totp {
+        id: Uuid,
+        #[arg(long, default_value_t = false)]
+        copy: bool,
+        #[arg(long, default_value_t = false)]
+        watch: bool,
+    },
 }
 
 // Subcommands for Vault and Item remain the same as previously defined
 #[derive(Subcommand)]
 pub enum VaultCommands {
-    Create { name: String },
+    Create {
+        #[arg(long)]
+        name: Option<String>,
+    },
     List,
-    Delete { id: String },
+    Delete {
+        id: String,
+    },
 }
 
 #[derive(Subcommand)]
 pub enum ItemCommands {
     Create {
         #[arg(long)]
-        vault_id: String,
+        vault: Option<String>,
+        // #[arg(long)]
+        // title: String,
 
-        #[arg(long)]
-        title: String,
+        // #[arg(long, value_delimiter = ',', default_value = "")]
+        // tags: Vec<String>,
 
-        #[arg(long, value_delimiter = ',', default_value = "")]
-        tags: Vec<String>,
-
-        #[command(subcommand)]
-        payload: CreateItemPayload,
+        // #[command(subcommand)]
+        // payload: CreateItemPayload,
     },
     List {
         vault_id: String,
     },
     View {
-        id: String,
+        #[arg(long)]
+        vault: Option<String>,
+        #[arg(long)]
+        item: Option<String>,
     },
     Delete {
-        id: String,
+        #[arg(long)]
+        vault: Option<String>,
+        #[arg(long)]
+        item: Option<String>,
     },
 }
 

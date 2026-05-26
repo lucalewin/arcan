@@ -8,7 +8,12 @@ use crate::{
     auth::{handle_unlock, login::authenticate, onboard::handle_onboard, session::require_session},
     cli::{Cli, Commands},
     config::ArcanConfig,
-    items::handlers::{handle_item_create, handle_item_delete, handle_item_list, handle_item_view},
+    items::{
+        create::create_item_interactive,
+        delete::handle_item_delete,
+        handlers::{handle_item_list, handle_item_view},
+        interactive::handle_item_view_scoped,
+    },
     state::ClientState,
     util::generate_password,
     vault::{handle_vault_create, handle_vault_delete, handle_vault_list},
@@ -46,8 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_db(&pool).await?;
 
     match cli.command {
-        Commands::Onboard { email } => {
-            handle_onboard(&pool, &email, &config.api_url).await?;
+        Commands::Onboard { email, login } => {
+            handle_onboard(&pool, &email, login, &config.api_url).await?;
         }
         Commands::Unlock => {
             handle_unlock(&pool).await?;
@@ -67,15 +72,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             match action {
                 cli::VaultCommands::Create { name } => {
-                    println!("Creating vault: {}", name);
-                    handle_vault_create(&pool, &enc_key, name).await?;
+                    // println!("Creating vault: {}", name);
+                    match name {
+                        Some(n) => {
+                            handle_vault_create(&pool, &enc_key, n).await?;
+                        }
+                        None => {
+                            eprintln!("Creating vault with interactive name input...");
+                        }
+                    }
                 }
                 cli::VaultCommands::List => {
-                    println!("Listing vaults...");
+                    // println!("Listing vaults...");
                     handle_vault_list(&pool, &enc_key).await?;
                 }
                 cli::VaultCommands::Delete { id } => {
-                    println!("Deleting vault with ID: {}", id);
+                    // println!("Deleting vault with ID: {}", id);
                     handle_vault_delete(&pool, id).await?;
                 }
             }
@@ -85,26 +97,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let enc_key = session.encryption_key()?;
 
             match action {
-                cli::ItemCommands::Create {
-                    vault_id,
-                    title,
-                    tags,
-                    payload,
-                } => {
-                    println!("Creating item '{}' in vault {}", "name", vault_id);
-                    handle_item_create(&pool, &enc_key, vault_id, title, tags, payload).await?;
+                // cli::ItemCommands::Create {
+                //     vault_id,
+                //     title,
+                //     tags,
+                //     payload,
+                // } => {
+                //     println!("Creating item '{}' in vault {}", "name", vault_id);
+                //     handle_item_create(&pool, &enc_key, vault_id, title, tags, payload).await?;
+                // }
+                cli::ItemCommands::Create { vault } => {
+                    // println!("Creating item in vault {}", vault);
+                    // create_item_handler(&pool, &enc_key, &vault).await?;
+                    create_item_interactive(&pool, &enc_key, vault).await?;
                 }
                 cli::ItemCommands::List { vault_id } => {
                     println!("Listing items in vault {}", vault_id);
                     handle_item_list(&pool, &enc_key, vault_id).await?;
                 }
-                cli::ItemCommands::View { id } => {
-                    println!("Reading item with ID: {}", id);
-                    handle_item_view(&pool, &enc_key, id).await?;
+                cli::ItemCommands::View { vault, item } => {
+                    // println!("Reading item with ID: {:?}", item);
+                    match item {
+                        Some(id) => handle_item_view(&pool, &enc_key, id).await?,
+                        None => {
+                            // let vault = resolve_vault(&pool, &enc_key, None).await?;
+                            // // println!("Listing items in vault '{}'", vault);
+                            // let vsk = get_decrypted_vsk(&pool, &enc_key, &vault).await?;
+                            // let item = resolve_item(&pool, &vsk, &vault, None).await?;
+                            // handle_item_view(&pool, &enc_key, item).await?;
+                            handle_item_view_scoped(&pool, &enc_key, vault, item).await?;
+                        }
+                    }
                 }
-                cli::ItemCommands::Delete { id } => {
-                    println!("Deleting item with ID: {}", id);
-                    handle_item_delete(&pool, id).await?;
+                cli::ItemCommands::Delete { vault, item } => {
+                    // println!("Deleting item with ID: {:?}", item);
+                    // handle_item_delete(&pool, item.unwrap()).await?;
+                    handle_item_delete(&pool, &enc_key, vault, item).await?;
                 }
             }
         }
@@ -115,7 +143,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let state = ClientState::get(&pool).await?;
 
             println!("Authenticating with server...");
-            let jwt = authenticate(state.email, &auth_key_bytes, &config.api_url).await?;
+            let jwt = authenticate(&state.email, &auth_key_bytes, &config.api_url).await?;
 
             println!("Pushing local changes...");
             sync::push_local_changes(&pool, &http_client, &jwt, &config.api_url).await?;
@@ -128,6 +156,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ClientState::update_sync_time(&pool, now).await?;
 
             println!("Sync complete.");
+        }
+        Commands::Totp { .. } => {
+            // let session = require_session()?;
+            // let enc_key = session.encryption_key()?;
         }
     }
 

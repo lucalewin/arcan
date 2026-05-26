@@ -41,7 +41,7 @@ pub fn login_client_finish(
 
 pub async fn authenticate(
     // pool: &SqlitePool,
-    email: String,
+    email: &str,
     auth_key: &[u8],
     api_url: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
@@ -55,7 +55,7 @@ pub async fn authenticate(
     let start_res = client
         .post(format!("{}/api/v1/auth/login/start", api_url))
         .json(&LoginStartRequest {
-            email: email.clone(),
+            email: email.to_string(),
             client_start: BASE64_STANDARD.encode(client_start_bytes),
         })
         .send()
@@ -71,7 +71,7 @@ pub async fn authenticate(
     let finish_res = client
         .post(format!("{}/api/v1/auth/login/finish", api_url))
         .json(&LoginFinishRequest {
-            email: email,
+            email: email.to_string(),
             attempt_id: start_data.attempt_id,
             client_finish: BASE64_STANDARD.encode(client_finish_bytes),
         })

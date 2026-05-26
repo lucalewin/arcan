@@ -1,3 +1,4 @@
+mod account;
 mod auth;
 mod middleware;
 mod pull;
@@ -6,7 +7,7 @@ mod push;
 use axum::{
     Router,
     extract::State,
-    routing::{delete, post},
+    routing::{get, post},
 };
 use base64::prelude::*;
 use opaque_ke::{ServerSetup, rand::rngs::OsRng};
@@ -58,7 +59,10 @@ async fn main() {
     };
 
     let protected_routes = Router::new()
-        .route("/api/v1/account", delete(delete_account))
+        .route(
+            "/api/v1/account",
+            get(crate::account::account_detail_handler).delete(delete_account),
+        )
         .route("/api/v1/sync/push", post(crate::push::sync_push_handler))
         .route("/api/v1/sync/pull", post(crate::pull::sync_pull_handler))
         .layer(axum::middleware::from_fn(auth_middleware));

@@ -136,3 +136,10 @@ pub struct LoginFinishResponse {
     pub salt: String,
     // TODO: add refresh_token and other nice stuff
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct AccountDetailsResponse {
+    pub email: String,
+    pub master_key_salt: String,
+    pub created_at: i64,
+}
