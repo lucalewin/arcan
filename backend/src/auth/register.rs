@@ -2,44 +2,22 @@ use crate::{AppStateRef, auth::normalize_email};
 use axum::{Json, extract::State, http::StatusCode};
 use base64::prelude::*;
 
-use bytes::Bytes;
-use opaque_ke::{RegistrationRequest, RegistrationUpload, ServerRegistration, ServerSetup};
-// use rand::rngs::OsRng;
+use email_address::EmailAddress;
+use opaque_ke::{RegistrationRequest, RegistrationUpload, ServerRegistration};
 use shared::{
     DefaultCipherSuite, RegistrationFinishRequest, RegistrationStartRequest,
     RegistrationStartResponse,
 };
-
-pub fn server_start(
-    setup: &ServerSetup<DefaultCipherSuite>,
-    account: &[u8],
-    client_start: &[u8],
-) -> Result<Bytes, Box<dyn std::error::Error>> {
-    match ServerRegistration::<DefaultCipherSuite>::start(
-        setup,
-        RegistrationRequest::deserialize(client_start)?,
-        account,
-    ) {
-        Ok(start_result) => Ok(Bytes::copy_from_slice(
-            &start_result.message.serialize()[..],
-        )),
-        Err(err) => Err(err.to_string().into()),
-    }
-}
-
-pub fn server_finish(client_finish: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let registration_upload = RegistrationUpload::<DefaultCipherSuite>::deserialize(client_finish)?;
-
-    let password_file = ServerRegistration::finish(registration_upload);
-
-    Ok(password_file.serialize().to_vec())
-}
 
 pub async fn register_start(
     State(state): State<AppStateRef>,
     Json(payload): Json<RegistrationStartRequest>,
 ) -> Result<Json<RegistrationStartResponse>, StatusCode> {
     let email = normalize_email(&payload.email);
+    if !EmailAddress::is_valid(&email) {
+        tracing::debug!("Invalid email format in registration: {}", email);
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
     let user_exists =
         sqlx::query_scalar!("SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)", email)
@@ -64,14 +42,23 @@ pub async fn register_start(
         .decode(payload.client_start)
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    let server_start = server_start(&state.server_setup, email.as_bytes(), &decoded_client_start)
-        .map_err(|e| {
+    let registration_request =
+        RegistrationRequest::deserialize(&decoded_client_start).map_err(|e| {
+            tracing::error!("Failed to deserialize OPAQUE client start: {:?}", e);
+            StatusCode::BAD_REQUEST
+        })?;
+    let server_start = ServerRegistration::<DefaultCipherSuite>::start(
+        &state.server_setup,
+        registration_request,
+        email.as_bytes(),
+    )
+    .map_err(|e| {
         tracing::error!("OPAQUE register start failed: {:?}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
     Ok(Json(RegistrationStartResponse {
-        server_start: BASE64_STANDARD.encode(server_start),
+        server_start: BASE64_STANDARD.encode(server_start.message.serialize().to_vec()),
     }))
 }
 
@@ -83,10 +70,17 @@ pub async fn register_finish(
         .decode(payload.client_finish)
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    let password_file = server_finish(&decoded_client_finish).map_err(|e| {
+    let registration_upload = RegistrationUpload::<DefaultCipherSuite>::deserialize(
+        &decoded_client_finish,
+    )
+    .map_err(|e| {
         tracing::error!("OPAQUE register finish failed: {:?}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    let password_file = ServerRegistration::finish(registration_upload)
+        .serialize()
+        .to_vec();
 
     sqlx::query!(
         "INSERT INTO users (email, master_key_salt, password_file) VALUES ($1, $2, $3)",

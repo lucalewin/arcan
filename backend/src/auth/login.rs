@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use opaque_ke::{
     CredentialFinalization, CredentialRequest, ServerLogin, ServerLoginParameters,
-    ServerRegistration, ServerSetup, rand::rngs::OsRng,
+    ServerRegistration, rand::rngs::OsRng,
 };
 // use rand::rngs::OsRng;
 //
@@ -21,43 +21,6 @@ struct LoginSessionState {
     user_id: Uuid,
     salt: String,
     opaque_state: String, // Base64
-}
-
-pub fn server_start(
-    setup: &ServerSetup<DefaultCipherSuite>,
-    account: &[u8],
-    password_file: &[u8],
-    client_start: &[u8],
-) -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
-    let password_file = ServerRegistration::<DefaultCipherSuite>::deserialize(password_file)?;
-
-    let login_start_result = ServerLogin::start(
-        &mut OsRng,
-        setup,
-        Some(password_file),
-        CredentialRequest::deserialize(client_start)?,
-        account,
-        ServerLoginParameters::default(),
-    )?;
-
-    Ok((
-        login_start_result.state.serialize().to_vec(),
-        login_start_result.message.serialize().to_vec(),
-    ))
-}
-
-pub fn server_finish(
-    client_finish: &[u8],
-    server_start: &[u8],
-) -> Result<(), Box<dyn std::error::Error>> {
-    let start_state = ServerLogin::<DefaultCipherSuite>::deserialize(server_start)?;
-
-    let _ = start_state.finish(
-        CredentialFinalization::deserialize(&client_finish)?,
-        ServerLoginParameters::default(),
-    )?;
-
-    Ok(())
 }
 
 pub async fn login_start(
@@ -89,12 +52,24 @@ pub async fn login_start(
         .decode(payload.client_start)
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    // You stored password_file as raw bytes now (see register_finish)
-    let (server_state, message) = server_start(
+    let password_file = ServerRegistration::<DefaultCipherSuite>::deserialize(&user.password_file)
+        .map_err(|e| {
+            tracing::error!("Failed to deserialize OPAQUE password file: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let credential_request = CredentialRequest::deserialize(&client_start).map_err(|e| {
+        tracing::error!("Failed to deserialize OPAQUE client start: {:?}", e);
+        StatusCode::BAD_REQUEST
+    })?;
+
+    let login_start_result = ServerLogin::start(
+        &mut OsRng,
         &state.server_setup,
+        Some(password_file),
+        credential_request,
         email.as_bytes(),
-        &user.password_file,
-        &client_start,
+        ServerLoginParameters::default(),
     )
     .map_err(|e| {
         tracing::error!("OPAQUE login start failed: {:?}", e);
@@ -105,7 +80,7 @@ pub async fn login_start(
     let session_data = LoginSessionState {
         user_id: user.id,
         salt: user.master_key_salt,
-        opaque_state: BASE64_STANDARD.encode(server_state),
+        opaque_state: BASE64_STANDARD.encode(login_start_result.state.serialize().to_vec()),
     };
 
     let mut redis = state.redis.clone();
@@ -123,7 +98,7 @@ pub async fn login_start(
 
     Ok(Json(LoginStartResponse {
         attempt_id,
-        message: BASE64_STANDARD.encode(message),
+        message: BASE64_STANDARD.encode(login_start_result.message.serialize().to_vec()),
     }))
 }
 
@@ -162,14 +137,23 @@ pub async fn login_finish(
         .decode(session_data.opaque_state)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    server_finish(&client_finish, &server_start).map_err(|e| {
-        tracing::warn!(
-            "OPAQUE login finish failed for user {}: {:?}",
-            session_data.user_id,
-            e
-        );
-        StatusCode::UNAUTHORIZED
+    let client_finish = CredentialFinalization::deserialize(&client_finish).map_err(|e| {
+        tracing::error!("Failed to deserialize OPAQUE client finish: {:?}", e);
+        StatusCode::BAD_REQUEST
     })?;
+    let start_state = ServerLogin::<DefaultCipherSuite>::deserialize(&server_start)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let _ = start_state
+        .finish(client_finish, ServerLoginParameters::default())
+        .map_err(|e| {
+            tracing::warn!(
+                "OPAQUE login finish failed for user {}: {:?}",
+                session_data.user_id,
+                e
+            );
+            StatusCode::UNAUTHORIZED
+        })?;
 
     let now = OffsetDateTime::now_utc();
     let claims = Claims {
