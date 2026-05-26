@@ -1,6 +1,7 @@
 use argon2::password_hash::SaltString;
 use chacha20poly1305::aead::OsRng;
 use secrecy::ExposeSecret;
+use shared::AccountDetailsRequest;
 use sqlx::SqlitePool;
 use tokio::task;
 use zeroize::Zeroize;
@@ -48,7 +49,10 @@ pub async fn handle_onboard(
         let client = reqwest::Client::new();
 
         let details = client
-            .get(format!("{}/api/v1/account", api_url))
+            .post(format!("{}/api/v1/account", api_url))
+            .json(&AccountDetailsRequest {
+                email: email.to_string(),
+            })
             .send()
             .await?
             .json::<shared::AccountDetailsResponse>()

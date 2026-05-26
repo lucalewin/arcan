@@ -138,8 +138,12 @@ pub struct LoginFinishResponse {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct AccountDetailsResponse {
+pub struct AccountDetailsRequest {
     pub email: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AccountDetailsResponse {
     pub master_key_salt: String,
     pub created_at: i64,
 }

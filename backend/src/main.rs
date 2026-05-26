@@ -4,11 +4,7 @@ mod middleware;
 mod pull;
 mod push;
 
-use axum::{
-    Router,
-    extract::State,
-    routing::{get, post},
-};
+use axum::{Router, extract::State, routing::post};
 use base64::prelude::*;
 use opaque_ke::{ServerSetup, rand::rngs::OsRng};
 use redis::aio::MultiplexedConnection;
@@ -61,7 +57,7 @@ async fn main() {
     let protected_routes = Router::new()
         .route(
             "/api/v1/account",
-            get(crate::account::account_detail_handler).delete(delete_account),
+            post(crate::account::account_detail_handler).delete(delete_account),
         )
         .route("/api/v1/sync/push", post(crate::push::sync_push_handler))
         .route("/api/v1/sync/pull", post(crate::pull::sync_pull_handler))

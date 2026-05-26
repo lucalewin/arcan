@@ -1,16 +1,17 @@
 use axum::{Json, extract::State, http::StatusCode};
-use shared::AccountDetailsResponse;
+use shared::{AccountDetailsRequest, AccountDetailsResponse};
 
-use crate::{AppStateRef, middleware::Session};
+use crate::AppStateRef;
 
 #[axum::debug_handler]
 pub async fn account_detail_handler(
     State(state): State<AppStateRef>,
-    Session(user_id): Session,
+    // Session(user_id): Session,
+    Json(payload): Json<AccountDetailsRequest>,
 ) -> Result<(StatusCode, Json<AccountDetailsResponse>), StatusCode> {
     let detials = sqlx::query!(
-        "SELECT email, master_key_salt, created_at FROM users WHERE id = $1",
-        user_id
+        "SELECT master_key_salt, created_at FROM users WHERE email = $1",
+        payload.email
     )
     .fetch_one(&state.pool)
     .await
@@ -19,7 +20,6 @@ pub async fn account_detail_handler(
     Ok((
         StatusCode::OK,
         Json(AccountDetailsResponse {
-            email: detials.email,
             master_key_salt: detials.master_key_salt,
             created_at: detials.created_at.unix_timestamp(),
         }),
