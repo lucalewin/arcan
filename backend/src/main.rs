@@ -120,15 +120,16 @@ async fn get_redis_connection() -> MultiplexedConnection {
 }
 
 fn get_server_setup() -> ServerSetup<DefaultCipherSuite> {
-    if std::fs::exists(Path::new(".state.safe")).unwrap() {
-        let mut file = File::open(".state.safe").unwrap();
+    std::fs::create_dir_all("./data").unwrap();
+    if std::fs::exists(Path::new("./data/.state.safe")).unwrap() {
+        let mut file = File::open("./data/.state.safe").unwrap();
         let mut content = String::new();
         file.read_to_string(&mut content).unwrap();
         let setup = ServerSetup::deserialize(&BASE64_STANDARD.decode(content).unwrap()).unwrap();
         setup
     } else {
         let setup = ServerSetup::new(&mut OsRng);
-        let mut file = File::create(".state.safe").unwrap();
+        let mut file = File::create("./data/.state.safe").unwrap();
         let content = BASE64_STANDARD.encode(setup.serialize());
         file.write_all(&content.as_bytes()).unwrap();
         setup

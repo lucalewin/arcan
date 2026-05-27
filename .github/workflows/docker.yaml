@@ -32,6 +32,6 @@ jobs:
           context: .
           file: ./backend/Dockerfile
           push: true
-          tags: ghcr.io/lucalewin/arcan-backend:latest
+          tags: ghcr.io/lucalewin/arcan:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
