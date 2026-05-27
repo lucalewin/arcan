@@ -1,10 +1,9 @@
-mod account;
 mod auth;
 mod middleware;
 mod pull;
 mod push;
 
-use axum::{Router, extract::State, routing::post};
+use axum::{Router, routing::post};
 use base64::prelude::*;
 use opaque_ke::{ServerSetup, rand::rngs::OsRng};
 use redis::aio::MultiplexedConnection;
@@ -36,16 +35,14 @@ async fn main() {
         .with_max_level(Level::DEBUG)
         .init();
 
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = PgPool::connect(&database_url).await.unwrap();
-    let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL must be set");
-    let redis_client = redis::Client::open(redis_url).unwrap();
-    let redis = redis_client
-        .get_multiplexed_async_connection()
-        .await
-        .unwrap();
+    let pool = get_database_connection().await;
+    let redis = get_redis_connection().await;
     let server_setup = get_server_setup();
-    let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+
+    let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|e| {
+        tracing::error!(%e, "JWT_SECRET must be set");
+        std::process::exit(1);
+    });
 
     let state = AppState {
         pool,
@@ -54,53 +51,72 @@ async fn main() {
         jwt_secret,
     };
 
-    let protected_routes = Router::new()
+    let auth_routes = Router::new()
+        .route("/salt", post(crate::auth::salt::get_salt))
+        .route("/login/start", post(crate::auth::login::login_start))
+        .route("/login/finish", post(crate::auth::login::login_finish))
         .route(
-            "/api/v1/account",
-            post(crate::account::account_detail_handler).delete(delete_account),
-        )
-        .route("/api/v1/sync/push", post(crate::push::sync_push_handler))
-        .route("/api/v1/sync/pull", post(crate::pull::sync_pull_handler))
-        .layer(axum::middleware::from_fn(auth_middleware));
-
-    let app = Router::new()
-        .route(
-            "/api/v1/auth/login/start",
-            post(crate::auth::login::login_start),
-        )
-        .route(
-            "/api/v1/auth/login/finish",
-            post(crate::auth::login::login_finish),
-        )
-        .route(
-            "/api/v1/auth/register/start",
+            "/register/start",
             post(crate::auth::register::register_start),
         )
         .route(
-            "/api/v1/auth/register/finish",
+            "/register/finish",
             post(crate::auth::register::register_finish),
-        )
-        .merge(protected_routes)
+        );
+
+    let sync_routes = Router::new()
+        .route("/push", post(crate::push::sync_push_handler))
+        .route("/pull", post(crate::pull::sync_pull_handler));
+
+    let app = Router::new()
+        .nest("/api/v1/auth", auth_routes)
+        .nest("/api/v1/sync", sync_routes)
         .layer(TraceLayer::new_for_http())
         .with_state(Arc::new(state));
 
-    tracing::info!("Starting server on port 3000");
-
+    tracing::info!("Starting server...");
     let listener = TcpListener::bind(("0.0.0.0", 3000)).await.unwrap();
+    tracing::info!("Server listening on port 3000");
+
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn delete_account(State(_app): State<AppStateRef>) {}
+async fn get_database_connection() -> PgPool {
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|e| {
+        tracing::error!(%e, "DATABASE_URL must be set");
+        std::process::exit(1);
+    });
 
-async fn auth_middleware(
-    mut req: axum::extract::Request,
-    next: axum::middleware::Next,
-) -> axum::response::Response {
-    // Hardcode a UUID that exists in your 'users' table
-    let mock_user_id = uuid::Uuid::parse_str("ce7809b9-fe22-4ed6-baf0-b2dbbc654be0").unwrap();
-    req.extensions_mut().insert(mock_user_id);
+    match PgPool::connect(&database_url).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!(%e, "Failed to connect to database");
+            std::process::exit(1);
+        }
+    }
+}
 
-    next.run(req).await
+async fn get_redis_connection() -> MultiplexedConnection {
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|e| {
+        tracing::error!(%e, "REDIS_URL must be set");
+        std::process::exit(1);
+    });
+
+    let redis_client = match redis::Client::open(redis_url) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!(%e, "Failed to create Redis client");
+            std::process::exit(1);
+        }
+    };
+
+    match redis_client.get_multiplexed_async_connection().await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(%e, "Failed to connect to Redis");
+            std::process::exit(1);
+        }
+    }
 }
 
 fn get_server_setup() -> ServerSetup<DefaultCipherSuite> {
