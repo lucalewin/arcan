@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE vaults SET is_deleted = 1, is_dirty = 1, updated_at = ?1 WHERE id = ?2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "883153eda24ef1672cd85d77a72177ddc4e408831bddc87b9e71ce66448c3c68"
+}

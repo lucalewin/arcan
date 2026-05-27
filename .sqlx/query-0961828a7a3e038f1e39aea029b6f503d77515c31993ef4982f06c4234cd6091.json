@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE client_state SET last_sync_at = ?1 WHERE id = 1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "0961828a7a3e038f1e39aea029b6f503d77515c31993ef4982f06c4234cd6091"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT encrypted_vsk FROM vaults WHERE id = ?1 AND is_deleted = 0",
+  "describe": {
+    "columns": [
+      {
+        "name": "encrypted_vsk",
+        "ordinal": 0,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9da608a28d58597fee6bfe7681a25ac1b3c583238c8e53c387f46d2d626e3f87"
+}

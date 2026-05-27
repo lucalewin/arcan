@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO client_state (id, email, local_verifier, master_salt, last_sync_at)\n            VALUES (1, ?1, ?2, ?3, ?4)\n            ON CONFLICT(id) DO UPDATE SET\n                email = excluded.email,\n                local_verifier = excluded.local_verifier,\n                master_salt = excluded.master_salt,\n                last_sync_at = excluded.last_sync_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "b96dca45a047993642f8d21499f6ecf38f56da7716e00efa992c828f5c05c565"
+}

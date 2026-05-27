@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO vaults (id, user_id, encrypted_name, encrypted_vsk, is_deleted, server_revision, next_revision, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, 1, 2, $6, $7)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Bytea",
+        "Bytea",
+        "Bool",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1698459868b5cb560bb60d7f967749e0808a6fa9e59ea766c0b3ba90ea38dade"
+}

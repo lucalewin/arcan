@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT * FROM vaults WHERE is_dirty = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "encrypted_name",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "encrypted_vsk",
+        "ordinal": 2,
+        "type_info": "Blob"
+      },
+      {
+        "name": "server_revision",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "is_dirty",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "is_deleted",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 7,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a637ebb074f37736861638a0976bf5729f75d0221898dd52caa7e18151b6241a"
+}

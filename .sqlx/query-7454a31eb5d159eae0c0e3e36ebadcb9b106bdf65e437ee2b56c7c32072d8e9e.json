@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO vaults (id, encrypted_name, encrypted_vsk, server_revision, is_deleted, is_dirty, created_at, updated_at)\n            VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)\n            ON CONFLICT(id) DO UPDATE SET\n                encrypted_name = excluded.encrypted_name,\n                encrypted_vsk = excluded.encrypted_vsk,\n                server_revision = excluded.server_revision,\n                is_deleted = excluded.is_deleted,\n                updated_at = excluded.updated_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "7454a31eb5d159eae0c0e3e36ebadcb9b106bdf65e437ee2b56c7c32072d8e9e"
+}

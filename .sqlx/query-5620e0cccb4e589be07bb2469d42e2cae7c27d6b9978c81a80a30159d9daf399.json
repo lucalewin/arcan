@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE items SET is_deleted = 1, is_dirty = 1, updated_at = ?1 WHERE id = ?2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "5620e0cccb4e589be07bb2469d42e2cae7c27d6b9978c81a80a30159d9daf399"
+}

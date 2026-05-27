@@ -1,0 +1,60 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT v.id, v.server_revision, v.is_deleted, v.encrypted_name, v.encrypted_vsk, v.created_at, v.updated_at\n        FROM vaults v\n        JOIN UNNEST($1::uuid[], $2::bigint[]) AS req(id, rev) ON v.id = req.id\n        WHERE v.server_revision > req.rev AND v.user_id = $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "server_revision",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "is_deleted",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
+        "name": "encrypted_name",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 4,
+        "name": "encrypted_vsk",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray",
+        "Int8Array",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "cbddf64d934af5ff13a440d4aaf3c2311eade85b7a78ced13064fba4c5992242"
+}

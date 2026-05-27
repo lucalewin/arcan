@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT encrypted_payload FROM items WHERE id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "encrypted_payload",
+        "ordinal": 0,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8eab2481126d4eaa90b75290eba15d18523854a39391083587872ea20df02f65"
+}

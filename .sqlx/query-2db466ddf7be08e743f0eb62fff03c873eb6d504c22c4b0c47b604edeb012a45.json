@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE vaults SET encrypted_name = $1, encrypted_vsk = $2, is_deleted = $3, server_revision = $4, next_revision = $5, updated_at = $6 WHERE id = $7",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Bytea",
+        "Bool",
+        "Int8",
+        "Int8",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2db466ddf7be08e743f0eb62fff03c873eb6d504c22c4b0c47b604edeb012a45"
+}

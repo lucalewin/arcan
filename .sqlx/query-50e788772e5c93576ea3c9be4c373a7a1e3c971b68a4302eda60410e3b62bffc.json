@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT vault_id, MAX(rev) as max_rev FROM (\n            SELECT id as vault_id, server_revision as rev FROM vaults\n            UNION ALL\n            SELECT vault_id, server_revision as rev FROM items\n        )\n        GROUP BY vault_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "vault_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "max_rev",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "50e788772e5c93576ea3c9be4c373a7a1e3c971b68a4302eda60410e3b62bffc"
+}

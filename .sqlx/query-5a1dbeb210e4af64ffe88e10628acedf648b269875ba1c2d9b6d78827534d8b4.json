@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO vaults (id, encrypted_name, encrypted_vsk, server_revision, created_at, updated_at)\n         VALUES (?1, ?2, ?3, 0, ?4, ?5)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "5a1dbeb210e4af64ffe88e10628acedf648b269875ba1c2d9b6d78827534d8b4"
+}

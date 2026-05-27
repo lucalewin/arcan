@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO items (id, vault_id, encrypted_payload, server_revision, is_deleted, is_dirty, created_at, updated_at)\n         VALUES (?1, ?2, ?3, 0, 0, 1, ?4, ?5)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "df94f109796fcc053545c80fb1f83f45bd83a53f74777ee6ab347438ff9faebb"
+}
