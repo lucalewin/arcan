@@ -17,5 +17,5 @@ RUN cargo build --release --bin arcan
 # We do not need the Rust toolchain to run the binary!
 FROM debian:trixie-slim AS runtime
 WORKDIR /app
-COPY --from=builder /app/target/release/arcan /usr/local/bin
-ENTRYPOINT ["/usr/local/bin/arcan"]
+COPY --from=builder /app/target/release/arcan /app/arcan
+ENTRYPOINT ["/app/arcan"]
